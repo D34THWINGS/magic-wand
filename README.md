@@ -1,0 +1,6 @@
+Arduino MagicWand
+=================
+
+#Licence
+
+MIT
