@@ -16,7 +16,7 @@
 #define btnSELECT     4
 #define btnNONE       5
 
-#define NB_COLORS     5
+#define NB_COLORS     8
 #define NB_MENUS      6
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRBW + NEO_KHZ800);
@@ -29,14 +29,14 @@ int lcdKey = 0;
 int oldLcdKey = 0;
 int adcKeyIn = 0;
 int backLightPin = 10;
-String menuNames[NB_MENUS] = {"Off", "Color wipe", "theater chase", "Rainbow", "Speed", "Brightness"};
+String menuNames[NB_MENUS] = {"Off", "Color wipe", "Theater chase", "Rainbow", "Speed", "Brightness"};
 int menus[4] = {0};
 uint32_t selectedColor = strip.Color(0, 0, 0);
 uint32_t rainbowMode = 0;
 long lastFrame = 0;
 long lastButtonClick = 0;
-uint32_t colors[NB_COLORS] = {strip.Color(0, 0, 0, 255), strip.Color(255, 0, 0), strip.Color(0, 255, 0), strip.Color(0, 0, 255), strip.Color(255, 0, 255)};
-String colorNames[] = {"white", "red", "green", "blue", "pink"};
+uint32_t colors[NB_COLORS] = {strip.Color(0, 0, 0, 255), strip.Color(255, 0, 0), strip.Color(0, 255, 0), strip.Color(0, 0, 255), strip.Color(255, 0, 255), strip.Color(255, 75, 0), strip.Color(0, 255, 255), strip.Color(255, 150, 0)};
+String colorNames[] = {"white", "red", "green", "blue", "pink", "orange", "cyan", "yellow"};
 uint8_t brightness = 255;
 
 void setup() {
@@ -154,8 +154,12 @@ int menuAxisSingle(int currentValue, short minValue, short maxValue) {
 }
 
 void clearStrip() {
+  fullColor(strip.Color(0, 0, 0));
+}
+
+void fullColor(uint32_t color) {
   for (int i = 0; i < strip.numPixels(); i++) {
-    strip.setPixelColor(i, strip.Color(0, 0, 0));
+    strip.setPixelColor(i, color);
   }
   strip.show();
 }
