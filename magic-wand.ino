@@ -162,14 +162,21 @@ void clearStrip() {
 }
 
 void sdCardPattern() {
-  for (short i = 0; i < strip.numPixels(); i++) {
-    strip.setPixelColor(i, readColorFromFile());
+  for (short i = 0; i < strip.numPixels(); i += 2) {
+    byte* firstTwo = readFromFile();
+    byte* middleTwo = readFromFile();
+    byte* lastTwo = readFromFile();
+    strip.setPixelColor(i, strip.Color(firstTwo[0], firstTwo[1], middleTwo[0]));
+    strip.setPixelColor(i + 1, strip.Color(middleTwo[1], lastTwo[0], lastTwo[1]));
   }
   strip.show();
 }
 
-uint32_t readColorFromFile() {
-  return strip.Color(loadedFile.read(), loadedFile.read(), loadedFile.read());
+byte* readFromFile() {
+  byte readByte = loadedFile.read();
+  byte lowOrder = (readByte & 0b1111) << 4;
+  byte highOrder = readByte & 0b11110000;
+  return new byte[2]{lowOrder, highOrder};
 }
 
 int readLcdButtons() {
@@ -190,5 +197,4 @@ int readLcdButtons() {
 
   return btnNONE;
 }
-
 
