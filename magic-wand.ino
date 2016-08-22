@@ -32,8 +32,6 @@ bool loopAnimation = false;
 bool animationOn = false;
 byte colorEncoding = 8;
 long numberOfFiles = 0;
-char fileNames[10][14];
-long currentFileIndex = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -98,21 +96,11 @@ void menu(long newKey) {
   switch(curY) {
     case 0:
       lcd.print("File to load:");
-      if (newKey == btnLEFT && newKey != lastKey && currentFileIndex > 0) {
-        currentFileIndex--;
-      }
-      if (newKey == btnRIGHT && newKey != lastKey && currentFileIndex + 1 < numberOfFiles) {
-        currentFileIndex++;
-      }
-      if (newKey == btnSELECT) {
-        if (loadedFile) {
-          loadedFile.close();
-        }
-        loadedFile = SD.open(fileNames[currentFileIndex]);
-        curY = 1;
+      if (newKey == btnSELECT && newKey != lastKey) {
+        loadNextFile();
       }
       lcd.setCursor(0, 1);
-      lcd.print(fileNames[currentFileIndex]);
+      lcd.print(loadedFile.name());
       break;
     case 1:
       lcd.print(animationOn ? "Stop" : "Start");
@@ -204,7 +192,7 @@ void read8bit() {
     byte red = color & 0b11100000;
     byte green = (color & 0b11100) << 3;
     byte blue = (color & 0b11) << 5;
-    strip.setPixelColor(i, 0, 0, 0);
+    strip.setPixelColor(i, red, green, blue);
   }
 }
 
@@ -249,32 +237,25 @@ void setupSDcard() {
   while (!SD.begin(SD_PIN)) {
     delay(1000);
   }
-  root = SD.open("/");
-  GetFileNamesFromSD(root);
+  root = SD.open("/images");
+  loadNextFile();
 }
 
-long fileCount = 0;
-String currentFilename = "";
+void loadNextFile() {
+  loadNextFile(0);
+}
 
-void GetFileNamesFromSD(File dir) {
-  while(1) {
-    File entry =  dir.openNextFile();
-    if (!entry) {
-      numberOfFiles = fileCount;
-      entry.close();
-      break;
-    }
-
-    if (!entry.isDirectory()) {
-      currentFilename = entry.name();
-      if (currentFilename.endsWith(".mwt") || currentFilename.endsWith(".MWT") ) {
-        ((String) entry.name()).toCharArray(fileNames[fileCount], 14);
-        fileCount++;
-      }
-    }
-
-    entry.close();
+void loadNextFile(int recur) {
+  if (loadedFile) {
+    loadedFile.close();
+  }
+  loadedFile = root.openNextFile();
+  if (!loadedFile && recur < 1) {
+    root.rewindDirectory();
+    return loadNextFile(recur++);
+  }
+  if (loadedFile.isDirectory()) {
+    return loadNextFile();
   }
 }
-
 
