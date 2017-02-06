@@ -34,7 +34,6 @@ byte colorEncoding = 8;
 long numberOfFiles = 0;
 
 void setup() {
-  Serial.begin(9600);
   strip.begin();
   strip.show();
   strip.setBrightness(16);
@@ -237,22 +236,18 @@ void setupSDcard() {
   while (!SD.begin(SD_PIN)) {
     delay(1000);
   }
-  root = SD.open("/images");
-  loadNextFile();
+  // root = SD.open("/images");
+  loadedFile = SD.open("/images/nyancat.mwt");
 }
 
 void loadNextFile() {
-  loadNextFile(0);
-}
-
-void loadNextFile(int recur) {
   if (loadedFile) {
     loadedFile.close();
   }
   loadedFile = root.openNextFile();
-  if (!loadedFile && recur < 1) {
+  if (!loadedFile) {
     root.rewindDirectory();
-    return loadNextFile(recur++);
+    return loadNextFile();
   }
   if (loadedFile.isDirectory()) {
     return loadNextFile();
