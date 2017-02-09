@@ -1,37 +1,46 @@
 #include <Adafruit_NeoPixel.h>
 #include <LiquidCrystal.h>
-#include <SPI.h>
 #include <SD.h>
 
-#define PIXEL_PIN     2
-#define PIXEL_COUNT   144
-#define SD_PIN        4
-#define BACKLIGHT_PIN 10
-#define DIM_TIMER     5000
+#define PIXEL_PIN      2
+#define PIXEL_COUNT    144
+#define SD_PIN         4
+#define BACKLIGHT_PIN  10
+#define DIM_TIMER      5000
+#define MENU_DELAY     40
 
-#define btnRIGHT      0
-#define btnUP         1
-#define btnDOWN       2
-#define btnLEFT       3
-#define btnSELECT     4
-#define btnNONE       5
+#define btnRIGHT       0
+#define btnUP          1
+#define btnDOWN        2
+#define btnLEFT        3
+#define btnSELECT      4
+#define btnNONE        5
+
+#define minDelayValue  0
+#define maxDelayValue  100
+#define stepDelayValue 1
+#define minStartDelay  0
+#define maxStartDelay  5000
+#define stepStartDelay 100
 
 File root;
 File loadedFile;
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRBW + NEO_KHZ800);
 LiquidCrystal lcd(8, 9, 3, 5, 6, 7);
 
-byte curX = 0;
 byte curY = 0;
-long lastButtonClick = 0;
-long lastFrame = 0;
+unsigned long lastButtonClick = 0;
+unsigned long lastFrame = 0;
 byte lastKey = btnNONE;
-long delayValue = 10;
-long startDelay = 0;
+byte delayValue = 10;
+short startDelay = 0;
 bool loopAnimation = false;
 bool animationOn = false;
 byte colorEncoding = 8;
-long numberOfFiles = 0;
+
+const char strChoice[] PROGMEM = "> ";
+
+// ============== SETUP ==============
 
 void setup() {
   strip.begin();
@@ -44,10 +53,12 @@ void setup() {
   menu(btnNONE);
 }
 
-void loop() {
-  long currentTime = millis();
+// ============== MAIN LOOP ==============
 
-  long newKey = readLcdButtons();
+void loop() {
+  unsigned long currentTime = millis();
+
+  byte newKey = readLcdButtons();
 
   if (newKey != btnNONE) {
     menu(newKey);
@@ -75,13 +86,15 @@ void loop() {
     }
   } else {
     digitalWrite(BACKLIGHT_PIN, currentTime - lastButtonClick > DIM_TIMER ? LOW : HIGH);
-    delay(40);
+    delay(MENU_DELAY);
   }
 
   lastFrame = currentTime;
 }
 
-void menu(long newKey) {
+// ============== LCD SCREEN METHODS ==============
+
+void menu(byte newKey) {
   if (newKey != lastKey) {
     if (newKey == btnDOWN) {
       curY++;
@@ -94,73 +107,22 @@ void menu(long newKey) {
   lcd.clear();
   switch(curY) {
     case 0:
-      lcd.print("File to load:");
-      if (newKey == btnSELECT && newKey != lastKey) {
-        loadNextFile();
-      }
-      lcd.setCursor(0, 1);
-      lcd.print(loadedFile.name());
+      selectFile(newKey);
       break;
     case 1:
-      lcd.print(animationOn ? "Stop" : "Start");
-      if (loadedFile.available()) {
-        if (newKey != lastKey && newKey == btnSELECT) {
-          animationOn = !animationOn;
-          digitalWrite(BACKLIGHT_PIN, LOW);
-          clearStrip();
-          if (animationOn) {
-            loadedFile.seek(0);
-            delay(startDelay);
-          }
-        }
-      } else {
-        lcd.setCursor(0, 1);
-        lcd.print("!Select file!");
-      }
+      toggleAnimation(newKey);
       break;
     case 2:
-      lcd.print("Frame delay:");
-      if (newKey == btnLEFT && delayValue > 0) {
-        delayValue -= 1;
-      }
-      if (newKey == btnRIGHT && delayValue < 100) {
-        delayValue += 1;
-      }
-      lcd.setCursor(0, 1);
-      lcd.print("> " + (String)delayValue);
+      setFrameRate(newKey);
       break;
     case 3:
-      lcd.print("Start delay:");
-      if (newKey == btnLEFT && startDelay > 0) {
-        startDelay -= 100;
-      }
-      if (newKey == btnRIGHT && startDelay < 5000) {
-        startDelay += 100;
-      }
-      lcd.setCursor(0, 1);
-      lcd.print("> " + (String)startDelay);
+      setStartDelay(newKey);
       break;
     case 4:
-      lcd.print("Loop:");
-      if (newKey == btnLEFT) {
-        loopAnimation = false;
-      }
-      if (newKey == btnRIGHT) {
-        loopAnimation = true;
-      }
-      lcd.setCursor(0, 1);
-      lcd.print("> " + (String)(loopAnimation ? "yes" : "no"));
+      toggleLooping(newKey);
       break;
     case 5:
-      lcd.print("Encoding:");
-      if (newKey == btnLEFT) {
-        colorEncoding = 8;
-      }
-      if (newKey == btnRIGHT) {
-        colorEncoding = 12;
-      }
-      lcd.setCursor(0, 1);
-      lcd.print("> " + (String)(colorEncoding == 8 ? "8bit" : "12bit"));
+      toggleEncoding(newKey);
       break;
     default:
       curY--;
@@ -168,15 +130,96 @@ void menu(long newKey) {
   }
 }
 
+void selectFile(byte newKey) {
+  lcd.print(F("File to load:"));
+  if (newKey == btnSELECT && newKey != lastKey) {
+    loadNextFile();
+  }
+  lcd.setCursor(0, 1);
+  lcd.print(loadedFile.name());
+}
+
+void toggleAnimation(byte newKey) {
+  lcd.print(animationOn ? F("Stop") : F("Start"));
+  if (loadedFile.available()) {
+    if (newKey != lastKey && newKey == btnSELECT) {
+      animationOn = !animationOn;
+      digitalWrite(BACKLIGHT_PIN, LOW);
+      clearStrip();
+      if (animationOn) {
+        loadedFile.seek(0);
+        delay(startDelay);
+      }
+    }
+  } else {
+    lcd.setCursor(0, 1);
+    lcd.print(F("!Select file!"));
+  }
+}
+
+void setFrameRate(byte newKey) {
+  lcd.print(F("Frame delay:"));
+  if (newKey == btnLEFT && delayValue > minDelayValue) {
+    delayValue -= stepDelayValue;
+  }
+  if (newKey == btnRIGHT && delayValue < maxDelayValue) {
+    delayValue += stepDelayValue;
+  }
+  lcd.setCursor(0, 1);
+  lcd.print(strChoice);
+  lcd.print(delayValue);
+}
+
+void setStartDelay(byte newKey) {
+  lcd.print(F("Start delay:"));
+  if (newKey == btnLEFT && startDelay > minStartDelay) {
+    startDelay -= stepStartDelay;
+  }
+  if (newKey == btnRIGHT && startDelay < maxStartDelay) {
+    startDelay += stepStartDelay;
+  }
+  lcd.setCursor(0, 1);
+  lcd.print(strChoice);
+  lcd.print(startDelay);
+}
+
+void toggleLooping(byte newKey) {
+  lcd.print(F("Loop:"));
+  if (newKey == btnLEFT) {
+    loopAnimation = false;
+  }
+  if (newKey == btnRIGHT) {
+    loopAnimation = true;
+  }
+  lcd.setCursor(0, 1);
+  lcd.print(strChoice);
+  lcd.print(loopAnimation ? F("yes") : F("no"));
+}
+
+void toggleEncoding(byte newKey) {
+  lcd.print(F("Encoding:"));
+  if (newKey == btnLEFT) {
+    colorEncoding = 8;
+  }
+  if (newKey == btnRIGHT) {
+    colorEncoding = 12;
+  }
+  lcd.setCursor(0, 1);
+  lcd.print(strChoice);
+  lcd.print(colorEncoding == 8 ? F("8bit") : F("12bit"));
+}
+
+// ============== STRIP METHODS ==============
+
 void clearStrip() {
-  for (short i = 0; i < strip.numPixels(); i++) {
+  for (byte i = 0; i < strip.numPixels(); i++) {
     strip.setPixelColor(i, strip.Color(0,0,0));
   }
   strip.show();
 }
 
 void read12bit() {
-  for (short i = 0; i < strip.numPixels(); i += 2) {
+  for (byte i = 0; i < strip.numPixels(); i += 2) {
     byte firstTwo = loadedFile.read();
     byte middleTwo = loadedFile.read();
     byte lastTwo = loadedFile.read();
@@ -186,7 +229,7 @@ void read12bit() {
 }
 
 void read8bit() {
-  for (short i = 0; i < strip.numPixels(); i++) {
+  for (byte i = 0; i < strip.numPixels(); i++) {
     byte color = loadedFile.read();
     byte red = color & 0b11100000;
     byte green = (color & 0b11100) << 3;
@@ -213,7 +256,7 @@ byte highOrder(byte b) {
 }
 
 byte readLcdButtons() {
-  long adcKeyIn = analogRead(0);
+  short adcKeyIn = analogRead(0);
 
   if (adcKeyIn < 50)
       return btnRIGHT;
@@ -231,13 +274,14 @@ byte readLcdButtons() {
   return btnNONE;
 }
 
+// ============== SD CARD METHODS ==============
+
 void setupSDcard() {
   pinMode(SD_PIN, OUTPUT);
   while (!SD.begin(SD_PIN)) {
     delay(1000);
   }
-  // root = SD.open("/images");
-  loadedFile = SD.open("/images/nyancat.mwt");
+  root = SD.open(F("/images"));
 }
 
 void loadNextFile() {
