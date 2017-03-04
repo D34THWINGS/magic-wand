@@ -22,30 +22,33 @@
 #define minStartDelay  0
 #define maxStartDelay  5000
 #define stepStartDelay 100
+#define minBrightness  0
+#define maxBrightness  255
+#define stepBrightness 1
 
-File root;
 File loadedFile;
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRBW + NEO_KHZ800);
 LiquidCrystal lcd(8, 9, 3, 5, 6, 7);
 
 byte curY = 0;
-unsigned long lastButtonClick = 0;
+unsigned long lastButtonClick = 1;
 unsigned long lastFrame = 0;
 byte lastKey = btnNONE;
 byte delayValue = 10;
+byte brightness = 20;
 short startDelay = 0;
 bool loopAnimation = false;
 bool animationOn = false;
 byte colorEncoding = 8;
-
-const char strChoice[] PROGMEM = "> ";
+byte currentFileIndex = 0;
+char currentFileName[10];
 
 // ============== SETUP ==============
 
 void setup() {
   strip.begin();
   strip.show();
-  strip.setBrightness(16);
+  strip.setBrightness(brightness);
   lcd.begin(16, 2);
   pinMode(BACKLIGHT_PIN, OUTPUT);
   digitalWrite(BACKLIGHT_PIN, HIGH);
@@ -62,7 +65,9 @@ void loop() {
 
   if (newKey != btnNONE) {
     menu(newKey);
-    lastButtonClick = currentTime;
+    if (curY != 1) {
+      lastButtonClick = currentTime;
+    }
   }
 
   lastKey = newKey;
@@ -78,6 +83,8 @@ void loop() {
       if (loopAnimation) {
         sdCardPattern();
       } else {
+        loadedFile.close();
+        loadManifest();
         clearStrip();
         menu(btnNONE);
       }
@@ -85,7 +92,7 @@ void loop() {
       sdCardPattern();
     }
   } else {
-    digitalWrite(BACKLIGHT_PIN, currentTime - lastButtonClick > DIM_TIMER ? LOW : HIGH);
+    digitalWrite(BACKLIGHT_PIN, (currentTime - lastButtonClick < DIM_TIMER) && (lastButtonClick != 0) ? HIGH : LOW);
     delay(MENU_DELAY);
   }
 
@@ -103,7 +110,7 @@ void menu(byte newKey) {
       curY--;
     }
   }
-  
+
   lcd.clear();
   switch(curY) {
     case 0:
@@ -122,6 +129,9 @@ void menu(byte newKey) {
       toggleLooping(newKey);
       break;
     case 5:
+      setLedBrightness(newKey);
+      break;
+    case 6:
       toggleEncoding(newKey);
       break;
     default:
@@ -136,24 +146,24 @@ void selectFile(byte newKey) {
     loadNextFile();
   }
   lcd.setCursor(0, 1);
-  lcd.print(loadedFile.name());
+  lcd.print(currentFileName);
 }
 
 void toggleAnimation(byte newKey) {
   lcd.print(animationOn ? F("Stop") : F("Start"));
-  if (loadedFile.available()) {
-    if (newKey != lastKey && newKey == btnSELECT) {
-      animationOn = !animationOn;
-      digitalWrite(BACKLIGHT_PIN, LOW);
-      clearStrip();
-      if (animationOn) {
-        loadedFile.seek(0);
-        delay(startDelay);
-      }
+  if (newKey != lastKey && newKey == btnSELECT) {
+    lastButtonClick = 0;
+    animationOn = !animationOn;
+    digitalWrite(BACKLIGHT_PIN, LOW);
+    clearStrip();
+    if (animationOn) {
+      loadedFile.close();
+      loadedFile = SD.open("/IMAGES/" + String(currentFileIndex) + ".MWT");
+      delay(startDelay);
+    } else {
+      loadedFile.close();
+      loadManifest();
     }
-  } else {
-    lcd.setCursor(0, 1);
-    lcd.print(F("!Select file!"));
   }
 }
 
@@ -166,7 +176,6 @@ void setFrameRate(byte newKey) {
     delayValue += stepDelayValue;
   }
   lcd.setCursor(0, 1);
-  lcd.print(strChoice);
   lcd.print(delayValue);
 }
 
@@ -179,7 +188,6 @@ void setStartDelay(byte newKey) {
     startDelay += stepStartDelay;
   }
   lcd.setCursor(0, 1);
-  lcd.print(strChoice);
   lcd.print(startDelay);
 }
 
@@ -192,7 +200,6 @@ void toggleLooping(byte newKey) {
     loopAnimation = true;
   }
   lcd.setCursor(0, 1);
-  lcd.print(strChoice);
   lcd.print(loopAnimation ? F("yes") : F("no"));
 }
 
@@ -205,8 +212,19 @@ void toggleEncoding(byte newKey) {
     colorEncoding = 12;
   }
   lcd.setCursor(0, 1);
-  lcd.print(strChoice);
   lcd.print(colorEncoding == 8 ? F("8bit") : F("12bit"));
+}
+
+void setLedBrightness(byte newKey) {
+  lcd.print(F("Brightness:"));
+  if (newKey == btnLEFT && brightness > minBrightness) {
+    brightness -= stepBrightness;
+  }
+  if (newKey == btnRIGHT && brightness < maxBrightness) {
+    brightness += stepBrightness;
+  }
+  lcd.setCursor(0, 1);
+  lcd.print(brightness);
 }
 
 // ============== STRIP METHODS ==============
@@ -281,20 +299,42 @@ void setupSDcard() {
   while (!SD.begin(SD_PIN)) {
     delay(1000);
   }
-  root = SD.open(F("/images"));
+  loadManifest();
+}
+
+void loadManifest() {
+  loadedFile = SD.open(F("/IMAGES/MANIFEST"));
+  if (currentFileIndex != 0) {
+    // Reload filename of selected file
+    byte tmp = currentFileIndex;
+    currentFileIndex = 0;
+    while(tmp != currentFileIndex) {
+      loadNextFile();
+    }
+  } else {
+    loadNextFile();
+  }
 }
 
 void loadNextFile() {
-  if (loadedFile) {
-    loadedFile.close();
-  }
-  loadedFile = root.openNextFile();
-  if (!loadedFile) {
-    root.rewindDirectory();
-    return loadNextFile();
-  }
-  if (loadedFile.isDirectory()) {
-    return loadNextFile();
-  }
+  byte i = 0;
+  do {
+    char nextChar = loadedFile.read();
+    if (nextChar == -1) {
+      currentFileIndex = 0;
+      loadedFile.seek(0);
+      loadNextFile();
+      return;
+    }
+    if (nextChar == '\n') {
+      for (;i < 9; i++) {
+        currentFileName[i] = ' ';
+      }
+      break;
+    }
+    currentFileName[i] = nextChar;
+    i++;
+  } while(loadedFile.available());
+  currentFileIndex++;
 }
 
